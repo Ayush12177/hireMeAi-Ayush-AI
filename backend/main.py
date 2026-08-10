@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from contextlib import asynccontextmanager
 from typing import Iterator
 
 from dotenv import load_dotenv
@@ -13,7 +14,7 @@ from pypdf import PdfReader
 
 
 # =========================================================
-# Environment
+# ENVIRONMENT
 # =========================================================
 
 load_dotenv()
@@ -21,63 +22,23 @@ load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
 
 if not api_key:
-    raise RuntimeError(
-        "GROQ_API_KEY is missing. Add it to backend/.env"
-    )
+    print("WARNING: GROQ_API_KEY is missing")
 
-client = Groq(
-    api_key=api_key
-)
+client = Groq(api_key=api_key) if api_key else None
 
-model = "openai/gpt-oss-120b"
-AYUSH_GITHUB = "https://github.com/Ayush12177/"
-
-AYUSH_LINKEDIN = "https://www.linkedin.com/in/ayushgupta-fsd/"
+MODEL = "openai/gpt-oss-120b"
 
 
 # =========================================================
-# FastAPI
+# RESUME MODELS
 # =========================================================
-
-app = FastAPI(
-    title="Ayush'Ai API",
-    description="AI career assistant powered by Groq",
-    version="1.0.0",
-)
-
-
-# =========================================================
-# CORS
-# =========================================================
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "https://hire-me-ai-ayush-ai.vercel.app",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-# =========================================================
-# Resume Models
-# =========================================================
-
-class MatchResult(BaseModel):
-    score: float
-    details: dict
-
 
 class Experience(BaseModel):
     company: str | None = None
     role: str | None = None
     duration: str | None = None
     description: str | None = None
-    skills_used: list[str] = []
+    skills_used: list[str] = Field(default_factory=list)
 
 
 class Resume(BaseModel):
@@ -87,21 +48,23 @@ class Resume(BaseModel):
 
     total_experience_years: float | None = None
 
-    skills: list[str] = []
-    experiences: list[Experience] = []
-    education: list[str] = []
-    projects: list[str] = []
-    certifications: list[str] = []
+    skills: list[str] = Field(default_factory=list)
+    experiences: list[Experience] = Field(default_factory=list)
+    education: list[str] = Field(default_factory=list)
+    projects: list[str] = Field(default_factory=list)
+    certifications: list[str] = Field(default_factory=list)
 
-    strengths: list[str] = []
-    weaknesses: list[str] = []
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
 
-    
+
 resume_schema = Resume.model_json_schema()
+
+resume: Resume | None = None
 
 
 # =========================================================
-# Chat Request
+# REQUEST MODEL
 # =========================================================
 
 class ChatRequest(BaseModel):
@@ -109,24 +72,16 @@ class ChatRequest(BaseModel):
 
 
 # =========================================================
-# Global Resume
-# =========================================================
-
-resume: Resume | None = None
-
-
-# =========================================================
-# PDF Extraction
+# PDF READER
 # =========================================================
 
 def read_pdf(file_path: Path) -> str:
 
-    reader = PdfReader(file_path)
+    reader = PdfReader(str(file_path))
 
     text = ""
 
     for page in reader.pages:
-
         page_text = page.extract_text()
 
         if page_text:
@@ -136,67 +91,59 @@ def read_pdf(file_path: Path) -> str:
 
 
 # =========================================================
-# Parse Resume
+# PARSE RESUME
 # =========================================================
 
 def parse_resume(resume_text: str) -> Resume:
 
+    if client is None:
+        raise RuntimeError("GROQ_API_KEY is missing")
+
     system_prompt = f"""
 You are an expert resume parser.
 
-Extract information from the resume based on its meaning,
-not only based on exact section headings.
-
-Different resumes may use different headings.
-
-For example:
-
-- Experience
-- Professional Experience
-- Work History
-- Employment
-- Internships
-
-These may all contain relevant experience.
-
-Skills may also appear in:
-
-- Skills section
-- Work experience
-- Internships
-- Projects
-- Education
+Extract information from the resume based ONLY on information
+actually present in the resume.
 
 Return ONLY valid JSON matching this schema:
 
 {json.dumps(resume_schema, indent=2)}
 
-Important rules:
+Rules:
 
-1. Do not invent information.
+1. Never invent information.
 
-2. If a value is not available, return null.
+2. If information is unavailable, use null.
 
-3. If a list has no information, return an empty list.
+3. If a list has no information, return [].
 
 4. Include internships inside experiences.
 
-5. Extract skills mentioned across the entire resume.
+5. Extract skills from the complete resume.
 
-6. Extract projects mentioned across the resume.
+6. Extract projects from the complete resume.
 
-7. Extract certifications mentioned across the resume.
+7. Extract certifications from the complete resume.
+
+8. Extract strengths only if they are explicitly mentioned
+   or clearly stated in the resume.
+
+9. Extract weaknesses only if they are explicitly mentioned
+   or clearly stated in the resume.
+
+10. Do not infer strengths or weaknesses from technologies.
+
+11. Do not create experience that does not exist.
 """
 
     user_prompt = f"""
-Parse the following resume:
+Parse this resume:
 
 {resume_text}
 """
 
     response = client.chat.completions.create(
-        model=model,
-
+        model=MODEL,
         messages=[
             {
                 "role": "system",
@@ -207,7 +154,6 @@ Parse the following resume:
                 "content": user_prompt,
             },
         ],
-
         response_format={
             "type": "json_object"
         },
@@ -221,69 +167,157 @@ Parse the following resume:
 
 
 # =========================================================
-# Load Resume ONCE
+# LOAD RESUME
 # =========================================================
 
-@app.on_event("startup")
 def load_resume_once():
 
     global resume
 
-    base_dir = Path(__file__).resolve().parent
+    try:
 
-    resume_path = base_dir / "softCopy_resume.pdf"
+        base_dir = Path(__file__).resolve().parent
 
-    if not resume_path.exists():
+        resume_path = base_dir / "softCopy_resume.pdf"
 
-        print(
-            f"⚠️ Resume not found: {resume_path}"
-        )
+        print("===================================")
+        print("Starting resume loading...")
+        print("Resume path:", resume_path)
+        print("===================================")
 
-        return
+        if not resume_path.exists():
 
-    print("📄 Reading resume...")
+            print("ERROR: softCopy_resume.pdf not found")
 
-    resume_text = read_pdf(resume_path)
+            return
 
-    if not resume_text.strip():
+        resume_text = read_pdf(resume_path)
 
-        print("⚠️ Resume PDF is empty.")
+        if not resume_text.strip():
 
-        return
+            print("ERROR: Resume PDF is empty")
 
-    print("🤖 Parsing resume with Groq...")
+            return
 
-    resume = parse_resume(resume_text)
+        print("Resume extracted successfully")
 
-    print("✅ Resume parsed successfully.")
+        resume = parse_resume(resume_text)
 
-    print(
-        f"👤 Candidate: {resume.name}"
-    )
+        print("Resume parsed successfully")
 
-    print(
-        f"🛠️ Skills: {len(resume.skills)}"
-    )
+        print("Candidate:", resume.name)
+        print("Skills:", len(resume.skills))
+        print("Projects:", len(resume.projects))
+        print("Certifications:", len(resume.certifications))
+        print("Strengths:", len(resume.strengths))
+        print("Weaknesses:", len(resume.weaknesses))
 
-    print(
-        f"📁 Projects: {len(resume.projects)}"
-    )
+    except Exception as error:
 
-    print(
-        f"🏆 Certifications: {len(resume.certifications)}"
-    )
+        print("===================================")
+        print("RESUME LOADING ERROR")
+        print(error)
+        print("===================================")
 
-    print(
-    f"💪 Strengths: {len(resume.strengths)}"
-        )
-
-    print(
-    f"⚠️ Weaknesses: {len(resume.weaknesses)}"
-    )
+        resume = None
 
 
 # =========================================================
-# Ask Candidate - STREAMING
+# STARTUP
+# =========================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+
+    print("Starting Ayush'Ai backend...")
+
+    load_resume_once()
+
+    print("Ayush'Ai backend started")
+
+    yield
+
+    print("Ayush'Ai backend stopped")
+
+
+# =========================================================
+# FASTAPI
+# =========================================================
+
+app = FastAPI(
+    title="Ayush'Ai API",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+
+# =========================================================
+# CORS
+# =========================================================
+
+app.add_middleware(
+    CORSMiddleware,
+
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://hiremeai-sand.vercel.app/",
+    ],
+
+    allow_credentials=True,
+
+    allow_methods=["*"],
+
+    allow_headers=["*"],
+)
+
+
+# =========================================================
+# HOME
+# =========================================================
+
+@app.get("/")
+def home():
+
+    return {
+        "message": "Ayush'Ai backend is running 🚀",
+        "resume_loaded": resume is not None,
+    }
+
+
+# =========================================================
+# HEALTH CHECK
+# =========================================================
+
+@app.get("/health")
+def health():
+
+    return {
+        "status": "ok",
+        "resume_loaded": resume is not None,
+        "groq_configured": client is not None,
+    }
+
+
+# =========================================================
+# RESUME API
+# =========================================================
+
+@app.get("/resume")
+def get_resume():
+
+    if resume is None:
+
+        raise HTTPException(
+            status_code=503,
+            detail="Resume is not loaded"
+        )
+
+    return resume.model_dump()
+
+
+# =========================================================
+# STREAM AI RESPONSE
 # =========================================================
 
 def ask_candidate_stream(
@@ -291,224 +325,81 @@ def ask_candidate_stream(
     candidate_resume: Resume,
 ) -> Iterator[str]:
 
+    if client is None:
+
+        yield "Ayush'Ai backend is not configured correctly."
+
+        return
+
     system_prompt = f"""
 You are Ayush'Ai, the personal AI assistant for Ayush Gupta.
 
 Your ONLY purpose is to answer questions related to Ayush
-and the information available in his resume.
+and his professional profile.
 
-RESUME INFORMATION:
+Candidate information:
+
 {candidate_resume.model_dump_json(indent=2)}
 
-GitHub:
-{AYUSH_GITHUB}
+Rules:
 
-LinkedIn:
-{AYUSH_LINKEDIN}
+1. Answer ONLY using the candidate information provided.
 
+2. Never hallucinate.
 
-============================================================
-STRICT RESPONSE RULES
-============================================================
+3. Never invent information.
 
-1. Answer ONLY using information available in the resume
-   and the GitHub/LinkedIn links provided above.
+4. Never assume information that is not provided.
 
-2. NEVER invent information.
-
-3. NEVER guess information.
-
-4. NEVER assume information that is not present.
-
-5. If the requested information is not available, respond
-   exactly:
+5. If the requested information is unavailable, respond exactly:
 
 "I don't have enough information to answer that."
 
+6. You may explain technologies that appear in Ayush's skills.
 
-============================================================
-MARKDOWN FORMATTING
-============================================================
+7. Do not claim Ayush has experience with a technology unless
+that technology appears in his resume.
 
-Your response MUST use Markdown only.
+8. Keep answers professional and concise.
 
-Allowed formatting:
+9. Use Markdown.
 
-- **Bold**
-- *Italic*
-- Headings using #
-- Bullet points using -
-- Numbered lists
-- Markdown tables
-- Code blocks when necessary
+10. Never use HTML.
 
+11. Never output HTML tags such as <br>, <div>, <p>, <table>,
+or similar tags.
 
-============================================================
-ABSOLUTELY NO HTML
-============================================================
+12. Use Markdown bullets instead of HTML.
 
-NEVER use HTML in your response.
+13. Do not answer unrelated general questions.
 
-NEVER output HTML tags.
+14. Do not invent:
+- companies
+- internships
+- job titles
+- salary
+- experience
+- projects
+- certifications
+- achievements
+- grades
+- CGPA
+- contact information
+- GitHub information
+- LinkedIn information
 
-NEVER output HTML tags as plain text.
+15. If a question is unrelated to Ayush's profile,
+respond exactly:
 
-You MUST NOT use:
-
-<br>
-<br/>
-<br />
-<p>
-</p>
-<div>
-</div>
-<span>
-</span>
-<section>
-</section>
-<table>
-<tr>
-<td>
-<ul>
-<li>
-
-Do NOT use ANY HTML tag, even if the user asks for it.
-
-
-============================================================
-LINE BREAK RULE
-============================================================
-
-When you need a new line, use a normal Markdown newline.
-
-NEVER use <br> for line breaks.
-
-WRONG:
-
-Education <br> B.Tech CSE
-
-CORRECT:
-
-Education
-
-B.Tech CSE
-
-
-WRONG:
-
-- Java <br>
-- Python <br>
-- React.js
-
-CORRECT:
-
-- Java
-- Python
-- React.js
-
-
-============================================================
-LIST RULE
-============================================================
-
-Always use Markdown lists.
-
-WRONG:
-
-Skills: Java <br> Python <br> React.js
-
-CORRECT:
-
-Skills:
-
-- Java
-- Python
-- React.js
-
-
-============================================================
-TABLE RULE
-============================================================
-
-If you create a Markdown table, NEVER use <br> inside
-table cells.
-
-WRONG:
-
-| Skills |
-|---|
-| Java <br> Python <br> React.js |
-
-CORRECT:
-
-| Skills |
-|---|
-| Java, Python, React.js |
-
-
-============================================================
-PROJECT ANSWER RULE
-============================================================
-
-When explaining a project, use Markdown headings and
-bullet points.
-
-Example:
-
-## Project Overview
-
-Explain the project.
-
-## Technologies Used
-
-- JavaScript
-- Node.js
-- Express.js
-- MongoDB
-
-## Key Features
-
-- Feature 1
-- Feature 2
-- Feature 3
-
-Never use HTML to format the answer.
-
-
-============================================================
-IMPORTANT FINAL CHECK
-============================================================
-
-Before returning your answer, check the response.
-
-If you generated:
-
-<br>
-<br/>
-<br />
-<p>
-</p>
-<div>
-</div>
-<span>
-</span>
-
-REMOVE IT before sending the response.
-
-Replace HTML line breaks with normal Markdown line breaks.
-
-Your final response MUST contain ZERO HTML tags.
-
-Your final response MUST contain ZERO <br> tags.
-
-Your final response MUST contain ZERO HTML formatting.
-
-Return ONLY the cleaned Markdown response.
+"I don't have enough information to answer that."
 """
 
     response = client.chat.completions.create(
-        model=model,
+
+        model=MODEL,
+
         stream=True,
+
         messages=[
             {
                 "role": "system",
@@ -533,38 +424,9 @@ Return ONLY the cleaned Markdown response.
         if content:
             yield content
 
-# =========================================================
-# Home
-# =========================================================
-
-@app.get("/")
-def home():
-
-    return {
-        "message": "Ayush'Ai is running 🚀",
-        "resume_loaded": resume is not None,
-    }
-
 
 # =========================================================
-# Resume Information Endpoint
-# =========================================================
-
-@app.get("/resume")
-def get_resume():
-
-    if resume is None:
-
-        raise HTTPException(
-            status_code=503,
-            detail="Resume has not been loaded."
-        )
-
-    return resume.model_dump()
-
-
-# =========================================================
-# Streaming Chat API
+# CHAT API
 # =========================================================
 
 @app.post("/chat")
@@ -574,7 +436,7 @@ def chat(request: ChatRequest):
 
         raise HTTPException(
             status_code=503,
-            detail="Resume is not loaded. Please restart the backend."
+            detail="Resume is not loaded. Check Render logs."
         )
 
     question = request.question.strip()
@@ -586,19 +448,17 @@ def chat(request: ChatRequest):
             detail="Question cannot be empty."
         )
 
-
     return StreamingResponse(
 
         ask_candidate_stream(
             question,
-            resume,
+            resume
         ),
 
-        media_type="text/plain",
+        media_type="text/plain; charset=utf-8",
 
         headers={
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
     )

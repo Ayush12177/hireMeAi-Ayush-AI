@@ -20,7 +20,25 @@ import {
 
 import "./index.css";
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = (
+  import.meta.env.VITE_API_URL ||
+  "https://hiremeai-ayush-ai.onrender.com"
+).replace(/\/$/, "");
+
+const response = await fetch(`${API_URL}/chat`, {
+  method: "POST",
+
+  headers: {
+    "Content-Type": "application/json",
+    "Accept": "text/plain",
+  },
+
+  body: JSON.stringify({
+    question,
+  }),
+});
+
+console.log("Ayush'Ai API:", API_URL);
 
 const INITIAL_MESSAGE = {
   id: "welcome-message",
@@ -315,14 +333,128 @@ function App() {
   // STREAMING CHAT
   // =====================================================
 
-  const sendMessage = async (
-    text = input
-  ) => {
-    const question = text.trim();
+const sendMessage = async () => {
+  if (!input.trim() || isTyping) return;
 
-    if (!question || isTyping) {
-      return;
+  const question = input.trim();
+
+  const userMessage = {
+    id: crypto.randomUUID(),
+    role: "user",
+    content: question,
+  };
+
+  const aiMessageId = crypto.randomUUID();
+
+  setMessages((previous) => [
+    ...previous,
+    userMessage,
+    {
+      id: aiMessageId,
+      role: "assistant",
+      content: "",
+    },
+  ]);
+
+  setInput("");
+  setIsTyping(true);
+
+  try {
+    const endpoint = `${API_URL}/chat`;
+
+    console.log("Sending request to:", endpoint);
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "text/plain",
+      },
+
+      body: JSON.stringify({
+        question: question,
+      }),
+    });
+
+    console.log("Backend status:", response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+
+      throw new Error(
+        `Backend returned ${response.status}: ${errorText}`
+      );
     }
+
+    if (!response.body) {
+      throw new Error("Backend did not return a streaming response.");
+    }
+
+    const reader = response.body.getReader();
+
+    const decoder = new TextDecoder("utf-8");
+
+    let completeAnswer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      const chunk = decoder.decode(value, {
+        stream: true,
+      });
+
+      completeAnswer += chunk;
+
+      setMessages((previous) =>
+        previous.map((message) =>
+          message.id === aiMessageId
+            ? {
+                ...message,
+                content: completeAnswer,
+              }
+            : message
+        )
+      );
+    }
+
+    // Flush remaining decoder data
+    completeAnswer += decoder.decode();
+
+    setMessages((previous) =>
+      previous.map((message) =>
+        message.id === aiMessageId
+          ? {
+              ...message,
+              content: completeAnswer,
+            }
+          : message
+      )
+    );
+
+  } catch (error) {
+    console.error("Ayush'Ai connection error:", error);
+
+    setMessages((previous) =>
+      previous.map((message) =>
+        message.id === aiMessageId
+          ? {
+              ...message,
+              content:
+                "Unable to connect to Ayush'Ai. Please try again.",
+            }
+          : message
+      )
+    );
+
+  } finally {
+    setIsTyping(false);
+  }
+};
 
     // ---------------------------------------------------
     // Chat ID
