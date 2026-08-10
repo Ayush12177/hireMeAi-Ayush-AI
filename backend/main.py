@@ -5,11 +5,27 @@ from contextlib import asynccontextmanager
 from typing import Iterator
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+
+from fastapi import (
+    FastAPI,
+    HTTPException,
+)
+
+from fastapi.middleware.cors import (
+    CORSMiddleware,
+)
+
+from fastapi.responses import (
+    StreamingResponse,
+)
+
 from groq import Groq
-from pydantic import BaseModel, Field
+
+from pydantic import (
+    BaseModel,
+    Field,
+)
+
 from pypdf import PdfReader
 
 
@@ -24,7 +40,11 @@ api_key = os.getenv("GROQ_API_KEY")
 if not api_key:
     print("WARNING: GROQ_API_KEY is missing")
 
-client = Groq(api_key=api_key) if api_key else None
+client = (
+    Groq(api_key=api_key)
+    if api_key
+    else None
+)
 
 MODEL = "openai/gpt-oss-120b"
 
@@ -38,7 +58,10 @@ class Experience(BaseModel):
     role: str | None = None
     duration: str | None = None
     description: str | None = None
-    skills_used: list[str] = Field(default_factory=list)
+
+    skills_used: list[str] = Field(
+        default_factory=list
+    )
 
 
 class Resume(BaseModel):
@@ -48,14 +71,33 @@ class Resume(BaseModel):
 
     total_experience_years: float | None = None
 
-    skills: list[str] = Field(default_factory=list)
-    experiences: list[Experience] = Field(default_factory=list)
-    education: list[str] = Field(default_factory=list)
-    projects: list[str] = Field(default_factory=list)
-    certifications: list[str] = Field(default_factory=list)
+    skills: list[str] = Field(
+        default_factory=list
+    )
 
-    strengths: list[str] = Field(default_factory=list)
-    weaknesses: list[str] = Field(default_factory=list)
+    experiences: list[Experience] = Field(
+        default_factory=list
+    )
+
+    education: list[str] = Field(
+        default_factory=list
+    )
+
+    projects: list[str] = Field(
+        default_factory=list
+    )
+
+    certifications: list[str] = Field(
+        default_factory=list
+    )
+
+    strengths: list[str] = Field(
+        default_factory=list
+    )
+
+    weaknesses: list[str] = Field(
+        default_factory=list
+    )
 
 
 resume_schema = Resume.model_json_schema()
@@ -72,7 +114,7 @@ class ChatRequest(BaseModel):
 
 
 # =========================================================
-# PDF READER
+# READ PDF
 # =========================================================
 
 def read_pdf(file_path: Path) -> str:
@@ -82,6 +124,7 @@ def read_pdf(file_path: Path) -> str:
     text = ""
 
     for page in reader.pages:
+
         page_text = page.extract_text()
 
         if page_text:
@@ -94,28 +137,37 @@ def read_pdf(file_path: Path) -> str:
 # PARSE RESUME
 # =========================================================
 
-def parse_resume(resume_text: str) -> Resume:
+def parse_resume(
+    resume_text: str
+) -> Resume:
 
     if client is None:
-        raise RuntimeError("GROQ_API_KEY is missing")
+
+        raise RuntimeError(
+            "GROQ_API_KEY is missing"
+        )
 
     system_prompt = f"""
 You are an expert resume parser.
 
-Extract information from the resume based ONLY on information
-actually present in the resume.
+Extract information ONLY from the provided resume.
 
 Return ONLY valid JSON matching this schema:
 
-{json.dumps(resume_schema, indent=2)}
+{json.dumps(
+    resume_schema,
+    indent=2
+)}
 
 Rules:
 
 1. Never invent information.
 
-2. If information is unavailable, use null.
+2. If information is unavailable,
+return null.
 
-3. If a list has no information, return [].
+3. If a list has no information,
+return [].
 
 4. Include internships inside experiences.
 
@@ -123,17 +175,17 @@ Rules:
 
 6. Extract projects from the complete resume.
 
-7. Extract certifications from the complete resume.
+7. Extract certifications from the
+complete resume.
 
-8. Extract strengths only if they are explicitly mentioned
-   or clearly stated in the resume.
+8. Extract strengths only when they are
+explicitly stated in the resume.
 
-9. Extract weaknesses only if they are explicitly mentioned
-   or clearly stated in the resume.
+9. Extract weaknesses only when they are
+explicitly stated in the resume.
 
-10. Do not infer strengths or weaknesses from technologies.
-
-11. Do not create experience that does not exist.
+10. Never infer a strength or weakness
+from a technology or project.
 """
 
     user_prompt = f"""
@@ -143,7 +195,9 @@ Parse this resume:
 """
 
     response = client.chat.completions.create(
+
         model=MODEL,
+
         messages=[
             {
                 "role": "system",
@@ -154,12 +208,18 @@ Parse this resume:
                 "content": user_prompt,
             },
         ],
+
         response_format={
             "type": "json_object"
         },
     )
 
-    raw_output = response.choices[0].message.content
+    raw_output = (
+        response
+        .choices[0]
+        .message
+        .content
+    )
 
     data = json.loads(raw_output)
 
@@ -167,7 +227,7 @@ Parse this resume:
 
 
 # =========================================================
-# LOAD RESUME
+# LOAD RESUME ONCE
 # =========================================================
 
 def load_resume_once():
@@ -176,68 +236,117 @@ def load_resume_once():
 
     try:
 
-        base_dir = Path(__file__).resolve().parent
+        base_dir = (
+            Path(__file__)
+            .resolve()
+            .parent
+        )
 
-        resume_path = base_dir / "softCopy_resume.pdf"
+        resume_path = (
+            base_dir /
+            "softCopy_resume.pdf"
+        )
 
-        print("===================================")
-        print("Starting resume loading...")
-        print("Resume path:", resume_path)
-        print("===================================")
+        print(
+            "Resume path:",
+            resume_path
+        )
 
         if not resume_path.exists():
 
-            print("ERROR: softCopy_resume.pdf not found")
+            print(
+                "ERROR: softCopy_resume.pdf "
+                "not found"
+            )
 
             return
 
-        resume_text = read_pdf(resume_path)
+        resume_text = read_pdf(
+            resume_path
+        )
 
         if not resume_text.strip():
 
-            print("ERROR: Resume PDF is empty")
+            print(
+                "ERROR: Resume PDF is empty"
+            )
 
             return
 
-        print("Resume extracted successfully")
+        print(
+            "Resume extracted successfully"
+        )
 
-        resume = parse_resume(resume_text)
+        resume = parse_resume(
+            resume_text
+        )
 
-        print("Resume parsed successfully")
+        print(
+            "Resume parsed successfully"
+        )
 
-        print("Candidate:", resume.name)
-        print("Skills:", len(resume.skills))
-        print("Projects:", len(resume.projects))
-        print("Certifications:", len(resume.certifications))
-        print("Strengths:", len(resume.strengths))
-        print("Weaknesses:", len(resume.weaknesses))
+        print(
+            "Candidate:",
+            resume.name
+        )
+
+        print(
+            "Skills:",
+            len(resume.skills)
+        )
+
+        print(
+            "Projects:",
+            len(resume.projects)
+        )
+
+        print(
+            "Certifications:",
+            len(resume.certifications)
+        )
+
+        print(
+            "Strengths:",
+            len(resume.strengths)
+        )
+
+        print(
+            "Weaknesses:",
+            len(resume.weaknesses)
+        )
 
     except Exception as error:
 
-        print("===================================")
-        print("RESUME LOADING ERROR")
-        print(error)
-        print("===================================")
+        print(
+            "RESUME LOADING ERROR:",
+            error
+        )
 
         resume = None
 
 
 # =========================================================
-# STARTUP
+# LIFESPAN
 # =========================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    print("Starting Ayush'Ai backend...")
+    print(
+        "Starting Ayush'Ai backend..."
+    )
 
     load_resume_once()
 
-    print("Ayush'Ai backend started")
+    print(
+        "Ayush'Ai backend started"
+    )
 
     yield
 
-    print("Ayush'Ai backend stopped")
+    print(
+        "Ayush'Ai backend stopped"
+    )
 
 
 # =========================================================
@@ -246,6 +355,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Ayush'Ai API",
+    description="Ayush'Ai career assistant",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -256,12 +366,14 @@ app = FastAPI(
 # =========================================================
 
 app.add_middleware(
+
     CORSMiddleware,
 
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "https://hiremeai-sand.vercel.app/",
+
+        "https://hiremeai-sand.vercel.app",
     ],
 
     allow_credentials=True,
@@ -280,13 +392,16 @@ app.add_middleware(
 def home():
 
     return {
-        "message": "Ayush'Ai backend is running 🚀",
-        "resume_loaded": resume is not None,
+        "message":
+            "Ayush'Ai backend is running 🚀",
+
+        "resume_loaded":
+            resume is not None,
     }
 
 
 # =========================================================
-# HEALTH CHECK
+# HEALTH
 # =========================================================
 
 @app.get("/health")
@@ -294,13 +409,17 @@ def health():
 
     return {
         "status": "ok",
-        "resume_loaded": resume is not None,
-        "groq_configured": client is not None,
+
+        "resume_loaded":
+            resume is not None,
+
+        "groq_configured":
+            client is not None,
     }
 
 
 # =========================================================
-# RESUME API
+# RESUME
 # =========================================================
 
 @app.get("/resume")
@@ -317,63 +436,66 @@ def get_resume():
 
 
 # =========================================================
-# STREAM AI RESPONSE
+# AI STREAM
 # =========================================================
 
 def ask_candidate_stream(
+
     question: str,
+
     candidate_resume: Resume,
+
 ) -> Iterator[str]:
 
     if client is None:
 
-        yield "Ayush'Ai backend is not configured correctly."
+        yield (
+            "Ayush'Ai backend is not "
+            "configured correctly."
+        )
 
         return
 
-    system_prompt = f"""
-You are Ayush'Ai, the personal AI assistant for Ayush Gupta.
 
-Your ONLY purpose is to answer questions related to Ayush
-and his professional profile.
+    system_prompt = f"""
+You are Ayush'Ai, the personal AI
+assistant for Ayush Gupta.
+
+Your ONLY purpose is to answer questions
+related to Ayush and his professional profile.
 
 Candidate information:
 
-{candidate_resume.model_dump_json(indent=2)}
+{candidate_resume.model_dump_json(
+    indent=2
+)}
 
-Rules:
+STRICT RULES:
 
-1. Answer ONLY using the candidate information provided.
+1. Answer ONLY using the candidate
+information provided above.
 
 2. Never hallucinate.
 
 3. Never invent information.
 
-4. Never assume information that is not provided.
+4. Never assume information that
+is not provided.
 
-5. If the requested information is unavailable, respond exactly:
+5. If requested information is
+unavailable, respond exactly:
 
-"I don't have enough information to answer that."
+"I don't have enough information
+to answer that."
 
-6. You may explain technologies that appear in Ayush's skills.
+6. You may explain technologies
+that appear in Ayush's skills.
 
-7. Do not claim Ayush has experience with a technology unless
-that technology appears in his resume.
+7. Do not claim Ayush has experience
+with a technology unless that
+technology appears in his resume.
 
-8. Keep answers professional and concise.
-
-9. Use Markdown.
-
-10. Never use HTML.
-
-11. Never output HTML tags such as <br>, <div>, <p>, <table>,
-or similar tags.
-
-12. Use Markdown bullets instead of HTML.
-
-13. Do not answer unrelated general questions.
-
-14. Do not invent:
+8. Do not invent:
 - companies
 - internships
 - job titles
@@ -385,14 +507,39 @@ or similar tags.
 - grades
 - CGPA
 - contact information
-- GitHub information
-- LinkedIn information
+- GitHub
+- LinkedIn
 
-15. If a question is unrelated to Ayush's profile,
-respond exactly:
+9. Keep responses professional
+and concise.
 
-"I don't have enough information to answer that."
+10. Use Markdown only.
+
+11. NEVER use HTML.
+
+12. NEVER output:
+<br>
+<br/>
+<p>
+</p>
+<div>
+</div>
+<table>
+</table>
+
+13. Use Markdown bullets instead
+of HTML.
+
+14. Do not answer unrelated
+general questions.
+
+15. If a question is unrelated
+to Ayush's profile, respond exactly:
+
+"I don't have enough information
+to answer that."
 """
+
 
     response = client.chat.completions.create(
 
@@ -412,12 +559,16 @@ respond exactly:
         ],
     )
 
+
     for chunk in response:
 
         if not chunk.choices:
             continue
 
-        delta = chunk.choices[0].delta
+        delta = (
+            chunk.choices[0]
+            .delta
+        )
 
         content = delta.content
 
@@ -426,7 +577,7 @@ respond exactly:
 
 
 # =========================================================
-# CHAT API
+# CHAT
 # =========================================================
 
 @app.post("/chat")
@@ -436,7 +587,10 @@ def chat(request: ChatRequest):
 
         raise HTTPException(
             status_code=503,
-            detail="Resume is not loaded. Check Render logs."
+            detail=(
+                "Resume is not loaded. "
+                "Check Render logs."
+            ),
         )
 
     question = request.question.strip()
@@ -445,17 +599,20 @@ def chat(request: ChatRequest):
 
         raise HTTPException(
             status_code=400,
-            detail="Question cannot be empty."
+            detail="Question cannot be empty",
         )
+
 
     return StreamingResponse(
 
         ask_candidate_stream(
             question,
-            resume
+            resume,
         ),
 
-        media_type="text/plain; charset=utf-8",
+        media_type=(
+            "text/plain; charset=utf-8"
+        ),
 
         headers={
             "Cache-Control": "no-cache",
