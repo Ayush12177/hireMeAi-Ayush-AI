@@ -71,34 +71,14 @@ class Resume(BaseModel):
 
     total_experience_years: float | None = None
 
-    skills: list[str] = Field(
-        default_factory=list
-    )
-
-    experiences: list[Experience] = Field(
-        default_factory=list
-    )
-
-    education: list[str] = Field(
-        default_factory=list
-    )
-
-    projects: list[str] = Field(
-        default_factory=list
-    )
-
-    certifications: list[str] = Field(
-        default_factory=list
-    )
-
-    strengths: list[str] = Field(
-        default_factory=list
-    )
-
-    weaknesses: list[str] = Field(
-        default_factory=list
-    )
-
+    skills: list[str] = Field(default_factory=list)
+    experiences: list[Experience] = Field(default_factory=list)
+    education: list[str] = Field(default_factory=list)
+    projects: list[str] = Field(default_factory=list)
+    certifications: list[str] = Field(default_factory=list)
+    achievements: list[str] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
 
 resume_schema = Resume.model_json_schema()
 
@@ -150,42 +130,48 @@ def parse_resume(
     system_prompt = f"""
 You are an expert resume parser.
 
-Extract information ONLY from the provided resume.
+Extract information from the resume based on its meaning,
+not only based on exact section headings.
 
 Return ONLY valid JSON matching this schema:
 
-{json.dumps(
-    resume_schema,
-    indent=2
-)}
+{json.dumps(resume_schema, indent=2)}
 
-Rules:
+IMPORTANT RULES:
 
-1. Never invent information.
+1. Do not invent information.
 
-2. If information is unavailable,
-return null.
+2. If a value is not available, return null.
 
-3. If a list has no information,
-return [].
+3. If a list has no information, return [].
 
-4. Include internships inside experiences.
+4. Extract internships and work experience into experiences.
 
-5. Extract skills from the complete resume.
+5. Extract technical skills mentioned across the entire resume.
 
-6. Extract projects from the complete resume.
+6. Extract all projects mentioned in the resume.
 
-7. Extract certifications from the
-complete resume.
+7. Extract all certifications and courses mentioned in the resume.
 
-8. Extract strengths only when they are
-explicitly stated in the resume.
+8. Extract achievements, awards, rankings, competition results,
+   academic accomplishments, coding achievements, and other
+   measurable accomplishments into achievements.
 
-9. Extract weaknesses only when they are
-explicitly stated in the resume.
+9. Do NOT put certifications into achievements unless the resume
+   explicitly describes them as an achievement.
 
-10. Never infer a strength or weakness
-from a technology or project.
+10. Extract strengths only when they are explicitly stated or
+    clearly supported by the resume.
+
+11. Extract weaknesses only when they are explicitly stated.
+
+12. Never invent achievements, strengths, weaknesses, experience,
+    grades, CGPA, companies, or technologies.
+
+13. Preserve the meaning and details from the resume.
+
+14. If there are multiple achievements, return each achievement
+    as a separate item in the achievements list.
 """
 
     user_prompt = f"""
@@ -314,6 +300,12 @@ def load_resume_once():
             "Weaknesses:",
             len(resume.weaknesses)
         )
+
+        print("Achievements:", len(resume.achievements))
+        print("Achievement data:")
+
+        for achievement in resume.achievements:
+            print(" -", achievement)
 
     except Exception as error:
 

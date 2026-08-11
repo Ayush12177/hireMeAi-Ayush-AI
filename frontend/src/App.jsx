@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -7,14 +7,20 @@ import {
   Plus,
   Search,
   Send,
-  Moon,
   Sun,
-  Paperclip,
-  User,
-  Bot,
+  Moon,
   Trash2,
   X,
+  Sparkles,
+  Bot,
+  ArrowUpRight,
+  Code2,
+  GraduationCap,
+  BriefcaseBusiness,
+  Award,
 } from "lucide-react";
+
+import "./index.css";
 
 // =========================================================
 // API
@@ -25,57 +31,48 @@ const API_URL = (
   "https://hiremeai-ayush-ai.onrender.com"
 ).replace(/\/$/, "");
 
+console.log("Ayush'Ai API:", API_URL);
+
 // =========================================================
 // INITIAL MESSAGE
 // =========================================================
 
 const INITIAL_MESSAGE = {
-  id: "initial-message",
+  id: "welcome-message",
   role: "assistant",
-  content: `# Hello, I'm Ayush'Ai 👋
+  content: `## Hey, I'm Ayush'Ai 👋
 
-I'm Ayush Gupta's personal AI career assistant.
+Your personal AI assistant for exploring **Ayush Gupta's professional profile**`
 
-I can help you explore Ayush's:
+// I can help you learn about:
 
-- Education
-- Technical skills
-- DSA knowledge
-- Projects
-- Certifications
-- Strengths and weaknesses
-- Career interests
-- GitHub and LinkedIn
-- Resume information
+// - Education & academic background
+// - Technical skills
+// - DSA & programming
+// - Projects
+// - Certifications & achievements
+// - Strengths & weaknesses
+// - Career interests
+// - Professional profile
 
-Ask me anything about Ayush's professional profile.`,
+// What would you like to know?`,
 };
 
 // =========================================================
-// HELPERS
+// CLEAN MARKDOWN
 // =========================================================
 
-function createTitle(text) {
-  const clean = text.trim();
-
-  if (clean.length <= 32) {
-    return clean;
-  }
-
-  return `${clean.substring(0, 32)}...`;
-}
-
-function cleanMarkdown(text) {
+const cleanMarkdown = (text) => {
   if (!text) return "";
 
   return text
-    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/\\?<br\s*\/?>/gi, "\n")
     .replace(/<\/?p>/gi, "\n")
     .replace(/<\/?div>/gi, "\n")
-    .replace(/<\/?span>/gi, "")
+    .replace(/\\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
+};
 
 // =========================================================
 // APP
@@ -95,11 +92,7 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem("ayush-ai-theme");
 
-    if (saved) {
-      return saved === "dark";
-    }
-
-    return false;
+    return saved ? saved === "dark" : true;
   });
 
   // -------------------------------------------------------
@@ -123,17 +116,18 @@ export default function App() {
   // RECENT CONVERSATIONS
   // -------------------------------------------------------
 
-  const [recentChats, setRecentChats] = useState(() => {
-    try {
-      const saved = localStorage.getItem(
-        "ayush-ai-recent-chats"
-      );
+  const [recentConversations, setRecentConversations] =
+    useState(() => {
+      try {
+        const saved = localStorage.getItem(
+          "ayush-ai-conversations"
+        );
 
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    });
 
   // -------------------------------------------------------
   // SEARCH
@@ -150,7 +144,7 @@ export default function App() {
   const messagesEndRef = useRef(null);
 
   // =========================================================
-  // THEME EFFECT
+  // THEME
   // =========================================================
 
   useEffect(() => {
@@ -161,15 +155,15 @@ export default function App() {
   }, [darkMode]);
 
   // =========================================================
-  // SAVE RECENT CHATS
+  // SAVE CONVERSATIONS
   // =========================================================
 
   useEffect(() => {
     localStorage.setItem(
-      "ayush-ai-recent-chats",
-      JSON.stringify(recentChats)
+      "ayush-ai-conversations",
+      JSON.stringify(recentConversations)
     );
-  }, [recentChats]);
+  }, [recentConversations]);
 
   // =========================================================
   // AUTO SCROLL
@@ -182,18 +176,17 @@ export default function App() {
   }, [messages]);
 
   // =========================================================
-  // TEXTAREA HEIGHT
+  // CREATE TITLE
   // =========================================================
 
-  const resizeTextarea = () => {
-    if (!textareaRef.current) return;
+  const createTitle = (text) => {
+    const clean = text.replace(/\s+/g, " ").trim();
 
-    textareaRef.current.style.height = "auto";
+    if (clean.length <= 36) {
+      return clean;
+    }
 
-    textareaRef.current.style.height = `${Math.min(
-      textareaRef.current.scrollHeight,
-      140
-    )}px`;
+    return `${clean.substring(0, 36)}...`;
   };
 
   // =========================================================
@@ -211,104 +204,107 @@ export default function App() {
 
     setIsTyping(false);
 
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 100);
   };
 
   // =========================================================
-  // UPDATE RECENT CHAT
+  // SAVE CHAT
   // =========================================================
 
-  const updateRecentChat = (
+  const saveConversation = (
     chatId,
     chatMessages,
     title
   ) => {
-    const userMessages = chatMessages.filter(
+    const hasUserMessage = chatMessages.some(
       (message) => message.role === "user"
     );
 
-    if (userMessages.length === 0) {
+    if (!hasUserMessage) {
       return;
     }
 
-    setRecentChats((previous) => {
-      const existing = previous.find(
-        (chat) => chat.id === chatId
+    const conversation = {
+      id: chatId,
+      title,
+      messages: chatMessages,
+      updatedAt: Date.now(),
+    };
+
+    setRecentConversations((previous) => {
+      const withoutCurrent = previous.filter(
+        (chat) => chat.id !== chatId
       );
 
-      const updatedChat = {
-        id: chatId,
-        title,
-        messages: chatMessages,
-        updatedAt: Date.now(),
-      };
-
-      let updated;
-
-      if (existing) {
-        updated = previous.map((chat) =>
-          chat.id === chatId ? updatedChat : chat
-        );
-      } else {
-        updated = [updatedChat, ...previous];
-      }
-
-      return updated
-        .sort(
-          (a, b) =>
-            b.updatedAt - a.updatedAt
-        )
-        .slice(0, 10);
+      return [
+        conversation,
+        ...withoutCurrent,
+      ].slice(0, 15);
     });
   };
 
   // =========================================================
-  // LOAD RECENT CHAT
+  // OPEN CHAT
   // =========================================================
 
-  const loadRecentChat = (chat) => {
-    setCurrentChatId(chat.id);
+  const openConversation = (conversation) => {
+    setMessages(conversation.messages);
 
-    setCurrentChatTitle(chat.title);
+    setCurrentChatId(conversation.id);
 
-    setMessages(chat.messages);
+    setCurrentChatTitle(conversation.title);
 
     setInput("");
 
-    setIsTyping(false);
+    if (window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
   };
 
   // =========================================================
-  // DELETE RECENT CHAT
+  // DELETE CHAT
   // =========================================================
 
-  const deleteRecentChat = (
+  const deleteConversation = (
     event,
-    chatId
+    conversationId
   ) => {
     event.stopPropagation();
 
-    setRecentChats((previous) =>
+    setRecentConversations((previous) =>
       previous.filter(
-        (chat) => chat.id !== chatId
+        (chat) => chat.id !== conversationId
       )
     );
 
-    if (currentChatId === chatId) {
+    if (currentChatId === conversationId) {
       startNewChat();
     }
   };
 
   // =========================================================
-  // SEND MESSAGE
+  // TEXTAREA
   // =========================================================
 
-  const sendMessage = async (
-    messageText = input
-  ) => {
-    const question = messageText.trim();
+  const resizeTextarea = () => {
+    const textarea = textareaRef.current;
+
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+
+    textarea.style.height =
+      `${Math.min(textarea.scrollHeight, 120)}px`;
+  };
+
+  // =========================================================
+  // SEND MESSAGE + STREAM
+  // =========================================================
+
+  const sendMessage = async (prompt = input) => {
+    const question = prompt.trim();
 
     if (!question || isTyping) {
       return;
@@ -317,14 +313,15 @@ export default function App() {
     const chatId =
       currentChatId || crypto.randomUUID();
 
-    const userMessages = messages.filter(
-      (message) => message.role === "user"
-    );
+    const existingUserMessages =
+      messages.filter(
+        (message) => message.role === "user"
+      );
 
-    const isFirstMessage =
-      userMessages.length === 0;
+    const firstMessage =
+      existingUserMessages.length === 0;
 
-    const title = isFirstMessage
+    const title = firstMessage
       ? createTitle(question)
       : currentChatTitle;
 
@@ -334,11 +331,10 @@ export default function App() {
       content: question,
     };
 
-    const assistantMessageId =
-      crypto.randomUUID();
+    const assistantId = crypto.randomUUID();
 
     const assistantMessage = {
-      id: assistantMessageId,
+      id: assistantId,
       role: "assistant",
       content: "",
     };
@@ -364,29 +360,20 @@ export default function App() {
     }
 
     try {
-      const endpoint = `${API_URL}/chat`;
+      const response = await fetch(
+        `${API_URL}/chat`,
+        {
+          method: "POST",
 
-      console.log(
-        "Connecting to:",
-        endpoint
-      );
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/plain",
+          },
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/plain",
-        },
-
-        body: JSON.stringify({
-          question,
-        }),
-      });
-
-      console.log(
-        "Backend status:",
-        response.status
+          body: JSON.stringify({
+            question,
+          }),
+        }
       );
 
       if (!response.ok) {
@@ -400,7 +387,7 @@ export default function App() {
 
       if (!response.body) {
         throw new Error(
-          "Backend did not return a streaming response."
+          "Streaming response unavailable."
         );
       }
 
@@ -418,9 +405,7 @@ export default function App() {
           done,
         } = await reader.read();
 
-        if (done) {
-          break;
-        }
+        if (done) break;
 
         const chunk =
           decoder.decode(value, {
@@ -429,28 +414,24 @@ export default function App() {
 
         completeAnswer += chunk;
 
-        const formattedAnswer =
+        const formatted =
           cleanMarkdown(
             completeAnswer
           );
 
         setMessages((previous) =>
-          previous.map(
-            (message) =>
-              message.id ===
-              assistantMessageId
-                ? {
-                    ...message,
-                    content:
-                      formattedAnswer,
-                  }
-                : message
+          previous.map((message) =>
+            message.id === assistantId
+              ? {
+                  ...message,
+                  content: formatted,
+                }
+              : message
           )
         );
       }
 
-      completeAnswer +=
-        decoder.decode();
+      completeAnswer += decoder.decode();
 
       const finalAnswer =
         cleanMarkdown(
@@ -459,19 +440,16 @@ export default function App() {
 
       setMessages((previous) => {
         const finalMessages =
-          previous.map(
-            (message) =>
-              message.id ===
-              assistantMessageId
-                ? {
-                    ...message,
-                    content:
-                      finalAnswer,
-                  }
-                : message
+          previous.map((message) =>
+            message.id === assistantId
+              ? {
+                  ...message,
+                  content: finalAnswer,
+                }
+              : message
           );
 
-        updateRecentChat(
+        saveConversation(
           chatId,
           finalMessages,
           title
@@ -481,21 +459,19 @@ export default function App() {
       });
     } catch (error) {
       console.error(
-        "Ayush'Ai connection error:",
+        "Ayush'Ai error:",
         error
       );
 
       setMessages((previous) =>
-        previous.map(
-          (message) =>
-            message.id ===
-            assistantMessageId
-              ? {
-                  ...message,
-                  content:
-                    "I couldn't connect to Ayush'Ai. Please check the backend and try again.",
-                }
-              : message
+        previous.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                content:
+                  "### Connection error\n\nI couldn't connect to Ayush'Ai. Please try again.",
+              }
+            : message
         )
       );
     } finally {
@@ -504,11 +480,14 @@ export default function App() {
   };
 
   // =========================================================
-  // ENTER KEY
+  // ENTER
   // =========================================================
 
   const handleKeyDown = (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
       event.preventDefault();
 
       sendMessage();
@@ -516,17 +495,74 @@ export default function App() {
   };
 
   // =========================================================
-  // SEARCH FILTER
+  // SEARCH
   // =========================================================
 
-  const filteredChats =
-    recentChats.filter((chat) =>
-      chat.title
-        .toLowerCase()
-        .includes(
-          searchQuery.toLowerCase()
-        )
-    );
+  const filteredConversations =
+    useMemo(() => {
+      const query =
+        searchQuery.trim().toLowerCase();
+
+      if (!query) {
+        return recentConversations;
+      }
+
+      return recentConversations.filter(
+        (conversation) =>
+          conversation.title
+            .toLowerCase()
+            .includes(query)
+      );
+    }, [
+      recentConversations,
+      searchQuery,
+    ]);
+
+  // =========================================================
+  // SUGGESTIONS
+  // =========================================================
+
+  const suggestions = [
+    {
+      icon: GraduationCap,
+      title: "Education",
+      description:
+        "Explore Ayush's academic background",
+      prompt:
+        "Tell me about Ayush's education and academic background.",
+    },
+
+    {
+      icon: Code2,
+      title: "Technical Skills",
+      description:
+        "Explore programming and development skills",
+      prompt:
+        "What technical skills does Ayush have?",
+    },
+
+    {
+      icon: BriefcaseBusiness,
+      title: "Projects",
+      description:
+        "Explore Ayush's development projects",
+      prompt:
+        "Explain Ayush's projects and the technologies used in them.",
+    },
+
+    {
+      icon: Award,
+      title: "Certifications",
+      description:
+        "Explore certifications and achievements",
+      prompt:
+        "What certifications and achievements does Ayush have?",
+    },
+  ];
+    
+  const isWelcome =
+    messages.length === 1 &&
+    messages[0].id === "welcome-message";
 
   // =========================================================
   // UI
@@ -534,249 +570,154 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen flex ${
+      className={
         darkMode
-          ? "bg-[#212121] text-gray-100"
-          : "bg-white text-gray-900"
-      }`}
+          ? "app dark"
+          : "app light"
+      }
     >
       {/* =====================================================
           SIDEBAR
       ===================================================== */}
 
       <aside
-        className={`
-          fixed md:relative z-30
-          h-screen
-          flex flex-col
-          border-r
-          transition-all duration-300
-          ${
-            sidebarOpen
-              ? "w-[270px]"
-              : "w-0 overflow-hidden border-none"
-          }
-          ${
-            darkMode
-              ? "bg-[#171717] border-[#303030]"
-              : "bg-[#f7f7f8] border-gray-200"
-          }
-        `}
+        className={
+          sidebarOpen
+            ? "sidebar sidebar-open"
+            : "sidebar sidebar-closed"
+        }
       >
-        {/* Logo */}
+        {/* Brand */}
 
-        <div className="px-5 pt-5 pb-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold">
-                Ayush'Ai
-              </h1>
-
-              <p
-                className={`text-xs mt-1 ${
-                  darkMode
-                    ? "text-gray-400"
-                    : "text-gray-500"
-                }`}
-              >
-                AI Career Assistant
-              </p>
+        <div className="sidebar-brand">
+          <div className="brand-left">
+            <div className="brand-icon">
+              <Sparkles size={18} />
             </div>
 
-            <button
-              onClick={() =>
-                setSidebarOpen(false)
-              }
-              className={`md:hidden p-2 rounded-lg ${
-                darkMode
-                  ? "hover:bg-[#2a2a2a]"
-                  : "hover:bg-gray-200"
-              }`}
-            >
-              <X size={18} />
-            </button>
+            <div>
+              <div className="brand-name">
+                Ayush'Ai
+              </div>
+
+              <div className="brand-subtitle">
+                Personal AI Assistant
+              </div>
+            </div>
           </div>
+
+          <button
+            className="icon-button mobile-close"
+            onClick={() =>
+              setSidebarOpen(false)
+            }
+          >
+            <X size={17} />
+          </button>
         </div>
 
-        {/* New chat */}
+        {/* New Chat */}
 
-        <div className="px-3">
+        <div className="sidebar-section">
           <button
+            className="new-chat-button"
             onClick={startNewChat}
-            className={`
-              w-full
-              flex items-center gap-3
-              px-4 py-3
-              rounded-xl
-              border
-              transition
-              ${
-                darkMode
-                  ? "border-[#3a3a3a] hover:bg-[#2a2a2a]"
-                  : "border-gray-200 hover:bg-gray-200"
-              }
-            `}
           >
-            <Plus size={18} />
+            <Plus size={17} />
 
-            <span className="font-medium">
-              New chat
-            </span>
+            <span>New conversation</span>
           </button>
         </div>
 
         {/* Search */}
 
-        <div className="px-3 mt-4">
-          <div
-            className={`
-              flex items-center gap-2
-              px-3 py-2.5
-              rounded-xl
-              ${
-                darkMode
-                  ? "bg-[#2a2a2a]"
-                  : "bg-white border border-gray-200"
-              }
-            `}
-          >
-            <Search
-              size={17}
-              className={
-                darkMode
-                  ? "text-gray-400"
-                  : "text-gray-500"
-              }
-            />
+        <div className="sidebar-search">
+          <Search size={16} />
 
-            <input
-              value={searchQuery}
-              onChange={(event) =>
-                setSearchQuery(
-                  event.target.value
-                )
-              }
-              placeholder="Search conversations"
-              className={`
-                flex-1
-                bg-transparent
-                outline-none
-                text-sm
-                ${
-                  darkMode
-                    ? "placeholder:text-gray-500"
-                    : "placeholder:text-gray-400"
-                }
-              `}
-            />
-          </div>
+          <input
+            value={searchQuery}
+            onChange={(event) =>
+              setSearchQuery(
+                event.target.value
+              )
+            }
+            placeholder="Search conversations"
+          />
         </div>
 
         {/* Recent */}
 
-        <div className="flex-1 overflow-y-auto px-3 mt-5">
-          <p
-            className={`px-2 mb-2 text-xs font-semibold uppercase tracking-wider ${
-              darkMode
-                ? "text-gray-500"
-                : "text-gray-400"
-            }`}
-          >
-            Recent
-          </p>
+        <div className="recent-container">
+          <div className="section-label">
+            Recent conversations
+          </div>
 
-          {filteredChats.length === 0 ? (
-            <p
-              className={`px-2 py-3 text-sm ${
-                darkMode
-                  ? "text-gray-500"
-                  : "text-gray-400"
-              }`}
-            >
-              No recent conversations
-            </p>
+          {filteredConversations.length ===
+          0 ? (
+            <div className="empty-recent">
+              <MessageSquareIcon />
+
+              <span>
+                Your recent conversations
+                will appear here
+              </span>
+            </div>
           ) : (
-            <div className="space-y-1">
-              {filteredChats.map((chat) => (
-                <button
-                  key={chat.id}
-                  onClick={() =>
-                    loadRecentChat(chat)
-                  }
-                  className={`
-                    group
-                    w-full
-                    flex items-center gap-2
-                    text-left
-                    px-3 py-2.5
-                    rounded-lg
-                    text-sm
-                    ${
-                      darkMode
-                        ? "hover:bg-[#2a2a2a]"
-                        : "hover:bg-gray-200"
+            <div className="conversation-list">
+              {filteredConversations.map(
+                (conversation) => (
+                  <button
+                    key={conversation.id}
+                    className={
+                      currentChatId ===
+                      conversation.id
+                        ? "conversation active"
+                        : "conversation"
                     }
-                  `}
-                >
-                  <span className="flex-1 truncate">
-                    {chat.title}
-                  </span>
-
-                  <Trash2
-                    size={15}
-                    onClick={(event) =>
-                      deleteRecentChat(
-                        event,
-                        chat.id
+                    onClick={() =>
+                      openConversation(
+                        conversation
                       )
                     }
-                    className={`
-                      shrink-0
-                      opacity-0
-                      group-hover:opacity-100
-                      transition
-                      ${
-                        darkMode
-                          ? "text-gray-500 hover:text-red-400"
-                          : "text-gray-400 hover:text-red-500"
+                  >
+                    <MessageSquareIcon />
+
+                    <span className="conversation-title">
+                      {conversation.title}
+                    </span>
+
+                    <Trash2
+                      size={14}
+                      className="delete-icon"
+                      onClick={(event) =>
+                        deleteConversation(
+                          event,
+                          conversation.id
+                        )
                       }
-                    `}
-                  />
-                </button>
-              ))}
+                    />
+                  </button>
+                )
+              )}
             </div>
           )}
         </div>
 
-        {/* Bottom */}
+        {/* Profile */}
 
-        <div
-          className={`p-4 border-t ${
-            darkMode
-              ? "border-[#303030]"
-              : "border-gray-200"
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center font-semibold">
-              A
-            </div>
+        <div className="sidebar-profile">
+          <div className="avatar">
+            A
+          </div>
 
-            <div>
-              <p className="text-sm font-medium">
-                Ayush Gupta
-              </p>
+          <div className="profile-info">
+            <strong>
+              Ayush Gupta
+            </strong>
 
-              <p
-                className={`text-xs ${
-                  darkMode
-                    ? "text-gray-500"
-                    : "text-gray-500"
-                }`}
-              >
-                Personal AI
-              </p>
-            </div>
+            <span>
+              Career Assistant
+            </span>
           </div>
         </div>
       </aside>
@@ -785,200 +726,206 @@ export default function App() {
           MAIN
       ===================================================== */}
 
-      <main className="flex-1 min-w-0 flex flex-col h-screen">
+      <main className="main">
         {/* Header */}
 
-        <header
-          className={`
-            h-16
-            shrink-0
-            flex items-center justify-between
-            px-4 md:px-6
-            border-b
-            ${
-              darkMode
-                ? "border-[#303030]"
-                : "border-gray-200"
-            }
-          `}
-        >
-          <div className="flex items-center gap-3">
+        <header className="topbar">
+          <div className="topbar-left">
             <button
+              className="icon-button"
               onClick={() =>
                 setSidebarOpen(
                   !sidebarOpen
                 )
               }
-              className={`p-2 rounded-lg ${
-                darkMode
-                  ? "hover:bg-[#2a2a2a]"
-                  : "hover:bg-gray-100"
-              }`}
             >
-              <Menu size={20} />
+              <Menu size={19} />
             </button>
 
             <div>
-              <h2 className="font-semibold">
+              <div className="topbar-title">
                 Ayush'Ai
-              </h2>
+              </div>
 
-              <p
-                className={`text-xs ${
-                  darkMode
-                    ? "text-gray-500"
-                    : "text-gray-400"
-                }`}
-              >
-                Career & Resume Assistant
-              </p>
+              <div className="topbar-status">
+                AI Career Assistant
+              </div>
             </div>
           </div>
 
-          {/* ONLY TOGGLE */}
+          {/* ONLY THEME TOGGLE */}
 
           <button
+            className="theme-toggle"
             onClick={() =>
               setDarkMode(!darkMode)
             }
-            aria-label="Toggle dark and light mode"
-            className={`
-              w-10 h-10
-              rounded-full
-              flex items-center justify-center
-              transition
-              ${
-                darkMode
-                  ? "bg-[#2a2a2a] hover:bg-[#333]"
-                  : "bg-gray-100 hover:bg-gray-200"
-              }
-            `}
+            aria-label="Toggle theme"
           >
             {darkMode ? (
-              <Sun size={18} />
+              <Sun size={17} />
             ) : (
-              <Moon size={18} />
+              <Moon size={17} />
             )}
           </button>
         </header>
 
-        {/* ===================================================
-            CHAT AREA
-        =================================================== */}
+        {/* Chat */}
 
-        <section className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-4 md:px-6 py-8">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className="mb-8"
-              >
-                {message.role === "user" ? (
-                  <div className="flex justify-end">
-                    <div
-                      className={`
-                        max-w-[80%]
-                        px-4 py-3
-                        rounded-2xl
-                        ${
-                          darkMode
-                            ? "bg-[#303030]"
-                            : "bg-[#f4f4f4]"
-                        }
-                      `}
-                    >
-                      <p className="whitespace-pre-wrap text-sm leading-6">
-                        {message.content}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex gap-3">
-                    <div
-                      className={`
-                        shrink-0
-                        w-8 h-8
-                        rounded-full
-                        flex items-center justify-center
-                        ${
-                          darkMode
-                            ? "bg-white text-black"
-                            : "bg-black text-white"
-                        }
-                      `}
-                    >
-                      <Bot size={17} />
-                    </div>
+        <section className="chat-area">
+          <div className="chat-content">
+            {isWelcome ? (
+              <div className="welcome">
+                {/* Hero */}
 
-                    <div className="min-w-0 flex-1">
-                      <div
-                        className={`
-                          prose
-                          max-w-none
-                          text-sm
-                          leading-7
-                          ${
-                            darkMode
-                              ? "prose-invert"
-                              : ""
+                <div className="hero-icon">
+                  <Sparkles size={25} />
+                </div>
+
+                <div className="hero-badge">
+                  <span className="status-dot" />
+                  AI Career Assistant
+                </div>
+
+                <h1>
+                  Meet{" "}
+                  <span>Ayush'Ai</span>
+                </h1>
+
+                <p>
+                  Explore Ayush Gupta's
+                  professional journey,
+                  technical skills, projects
+                  and career profile through
+                  an intelligent AI assistant.
+                </p>
+
+                {/* Suggestions */}
+
+                <div className="suggestion-grid">
+                  {suggestions.map(
+                    (suggestion) => {
+                      const Icon =
+                        suggestion.icon;
+
+                      return (
+                        <button
+                          key={
+                            suggestion.title
                           }
-                        `}
-                      >
-                        <ReactMarkdown
-                          remarkPlugins={[
-                            remarkGfm,
-                          ]}
+                          className="suggestion-card"
+                          onClick={() =>
+                            sendMessage(
+                              suggestion.prompt
+                            )
+                          }
                         >
-                          {message.content}
-                        </ReactMarkdown>
+                          <div className="suggestion-icon">
+                            <Icon size={17} />
+                          </div>
+
+                          <div className="suggestion-text">
+                            <strong>
+                              {
+                                suggestion.title
+                              }
+                            </strong>
+
+                            <span>
+                              {
+                                suggestion.description
+                              }
+                            </span>
+                          </div>
+
+                          <ArrowUpRight
+                            size={15}
+                            className="suggestion-arrow"
+                          />
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="messages">
+                {messages.map(
+                  (message) => (
+                    <div
+                      key={message.id}
+                      className={
+                        message.role ===
+                        "user"
+                          ? "message-row user-row"
+                          : "message-row"
+                      }
+                    >
+                      {message.role ===
+                      "assistant" && (
+                        <div className="message-avatar ai-avatar">
+                          <Sparkles
+                            size={15}
+                          />
+                        </div>
+                      )}
+
+                      <div
+                        className={
+                          message.role ===
+                          "user"
+                            ? "user-message"
+                            : "assistant-message"
+                        }
+                      >
+                        {message.role ===
+                        "assistant" ? (
+                          <ReactMarkdown
+                            remarkPlugins={[
+                              remarkGfm,
+                            ]}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        ) : (
+                          <p>
+                            {message.content}
+                          </p>
+                        )}
+                      </div>
+
+                      {message.role ===
+                        "user" && (
+                        <div className="message-avatar user-avatar">
+                          A
+                        </div>
+                      )}
+                    </div>
+                  )
+                )}
+
+                {isTyping &&
+                  messages[
+                    messages.length - 1
+                  ]?.content === "" && (
+                    <div className="message-row">
+                      <div className="message-avatar ai-avatar">
+                        <Bot size={15} />
+                      </div>
+
+                      <div className="typing">
+                        <span />
+                        <span />
+                        <span />
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                <div
+                  ref={messagesEndRef}
+                />
               </div>
-            ))}
-
-            {isTyping &&
-              messages[
-                messages.length - 1
-              ]?.content === "" && (
-                <div className="flex gap-3">
-                  <div
-                    className={`
-                      w-8 h-8
-                      rounded-full
-                      flex items-center justify-center
-                      ${
-                        darkMode
-                          ? "bg-white text-black"
-                          : "bg-black text-white"
-                      }
-                    `}
-                  >
-                    <Bot size={17} />
-                  </div>
-
-                  <div className="flex items-center gap-1 py-3">
-                    <span className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" />
-                    <span
-                      className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"
-                      style={{
-                        animationDelay:
-                          "100ms",
-                      }}
-                    />
-                    <span
-                      className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"
-                      style={{
-                        animationDelay:
-                          "200ms",
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-            <div ref={messagesEndRef} />
+            )}
           </div>
         </section>
 
@@ -986,107 +933,78 @@ export default function App() {
             INPUT
         =================================================== */}
 
-        <div className="shrink-0 px-4 md:px-6 pb-5">
-          <div className="max-w-3xl mx-auto">
-            <div
-              className={`
-                rounded-2xl
-                border
-                p-2
-                shadow-sm
-                ${
-                  darkMode
-                    ? "bg-[#2f2f2f] border-[#454545]"
-                    : "bg-white border-gray-300"
+        <div className="composer-area">
+          <div className="composer">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(event) => {
+                setInput(
+                  event.target.value
+                );
+
+                resizeTextarea();
+              }}
+              onKeyDown={handleKeyDown}
+              disabled={isTyping}
+              placeholder="Message Ayush'Ai..."
+              rows={1}
+            />
+
+            <div className="composer-bottom">
+              <span>
+                Enter to send · Shift +
+                Enter for new line
+              </span>
+
+              <button
+                className={
+                  input.trim() &&
+                  !isTyping
+                    ? "send-button active"
+                    : "send-button"
                 }
-              `}
-            >
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(event) => {
-                  setInput(
-                    event.target.value
-                  );
-
-                  resizeTextarea();
-                }}
-                onKeyDown={handleKeyDown}
-                placeholder="Message Ayush'Ai..."
-                rows={1}
-                disabled={isTyping}
-                className={`
-                  w-full
-                  resize-none
-                  bg-transparent
-                  outline-none
-                  px-3
-                  pt-2
-                  pb-1
-                  text-sm
-                  max-h-[140px]
-                  ${
-                    darkMode
-                      ? "placeholder:text-gray-500"
-                      : "placeholder:text-gray-400"
-                  }
-                `}
-              />
-
-              <div className="flex items-center justify-between px-2 pb-1 pt-1">
-                <button
-                  className={`p-2 rounded-lg ${
-                    darkMode
-                      ? "hover:bg-[#3a3a3a]"
-                      : "hover:bg-gray-100"
-                  }`}
-                  type="button"
-                >
-                  <Paperclip size={18} />
-                </button>
-
-                <button
-                  onClick={() =>
-                    sendMessage()
-                  }
-                  disabled={
-                    !input.trim() ||
-                    isTyping
-                  }
-                  className={`
-                    p-2.5
-                    rounded-xl
-                    transition
-                    ${
-                      input.trim() &&
-                      !isTyping
-                        ? darkMode
-                          ? "bg-white text-black hover:bg-gray-200"
-                          : "bg-black text-white hover:bg-gray-800"
-                        : darkMode
-                        ? "bg-[#404040] text-gray-600"
-                        : "bg-gray-200 text-gray-400"
-                    }
-                  `}
-                >
-                  <Send size={17} />
-                </button>
-              </div>
+                onClick={() =>
+                  sendMessage()
+                }
+                disabled={
+                  !input.trim() ||
+                  isTyping
+                }
+              >
+                <Send size={16} />
+              </button>
             </div>
+          </div>
 
-            <p
-              className={`text-center text-[11px] mt-2 ${
-                darkMode
-                  ? "text-gray-600"
-                  : "text-gray-400"
-              }`}
-            >
-              Ayush'Ai can make mistakes. Verify
-              important information.
-            </p>
+          <div className="disclaimer">
+            Ayush'Ai answers using the
+            information available in
+            Ayush's professional profile.
           </div>
         </div>
       </main>
     </div>
+  );
+}
+
+// =========================================================
+// SMALL ICON COMPONENT
+// =========================================================
+
+function MessageSquareIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" />
+    </svg>
   );
 }
